@@ -24,7 +24,6 @@ export const useLiveSessions = (userId: number | null, token: string | null): Us
 
   useEffect(() => {
     const fetchSessions = async () => {
-      // Early return if authentication is missing
       if (!userId || !token) {
         setSessions([]);
         setError('User not authenticated');
@@ -33,53 +32,28 @@ export const useLiveSessions = (userId: number | null, token: string | null): Us
       }
 
       try {
-        // Fetch live sessions directly (backend filters by subscriptions)
-        const sessionsRes = await fetch(`${API_URL}/api/user-sessions`, {
+        const sessionsRes = await fetch(`${API_URL}/api/user/courses/live/sessions/${userId}`, {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
           },
         });
 
+        if (!sessionsRes.ok) {
+          const errorData = await sessionsRes.json();
+          throw new Error(errorData.error?.message || 'Failed to fetch live sessions');
+        }
+
         const sessionsData = await sessionsRes.json();
 
-        if (!sessionsRes.ok) {
-          throw new Error(sessionsData.message || 'Failed to fetch live sessions');
-        }
+        console.log('Recived data: ', sessionsData);
 
-        console.log('Raw live sessions API response:', JSON.stringify(sessionsData, null, 2));
+        const formattedSessions = sessionsData.map((session: any): LiveSession => {
+          const thumbnailUrl = session.thumbnail
+            ? `${API_URL}${session.thumbnail}`
+            : '/images/course_card.jpeg';
 
-        if (!sessionsData.data || !Array.isArray(sessionsData.data)) {
-          throw new Error('No live sessions data returned');
-        }
-
-        // Deduplicate sessions by ID
-        const sessionMap = new Map<string, any>();
-
-        for (const sessionItem of sessionsData.data) {
-          const session = sessionItem.attributes || sessionItem;
-          const sessionId = session.documentId || sessionItem.id.toString();
-
-          if (!sessionMap.has(sessionId)) {
-            sessionMap.set(sessionId, { id: sessionItem.id, ...session });
-          }
-        }
-
-        // Format sessions
-        const formattedSessions: LiveSession[] = Array.from(sessionMap.values()).map((session: any): LiveSession => {
-          // Handle thumbnail with different possible structures
-          let thumbnailUrl = '/images/session_placeholder.jpeg';
-          if (session.thumbnail?.url) {
-            thumbnailUrl = `${API_URL}${session.thumbnail.url}`;
-          } else if (session.thumbnail?.data?.attributes?.url) {
-            thumbnailUrl = `${API_URL}${session.thumbnail.data.attributes.url}`;
-          } else if (session.thumbnail?.data?.attributes?.formats?.medium?.url) {
-            thumbnailUrl = `${API_URL}${session.thumbnail.data.attributes.formats.medium.url}`;
-          } else if (session.thumbnail?.data?.attributes?.formats?.small?.url) {
-            thumbnailUrl = `${API_URL}${session.thumbnail.data.attributes.formats.small.url}`;
-          }
-
-          // Format date
           const startTime = new Date(session.startTime || new Date());
           const formattedDateTime = startTime.toLocaleString('en-US', {
             weekday: 'short',
@@ -90,20 +64,12 @@ export const useLiveSessions = (userId: number | null, token: string | null): Us
             hour12: true,
           });
 
-          // Handle instructor
-          let instructorName = 'Default Instructor';
-          if (session.instructor?.username) {
-            instructorName = session.instructor.username;
-          } else if (session.instructor?.data?.attributes?.username) {
-            instructorName = session.instructor.data.attributes.username;
-          }
-
           return {
             image: thumbnailUrl,
             title: session.title || 'Untitled Session',
             description: session.description || '',
-            platform: 'Zoom', // Hardcoded as per original
-            instructor: instructorName,
+            platform: 'Zoom', // Adjust based on session.link or add platform field to LiveSession
+            instructor: session.instructor?.username || 'Unknown Instructor',
             dateTime: formattedDateTime,
             streamUrl: session.link || '#',
           };

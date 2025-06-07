@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Clock } from 'lucide-react';
 
 interface Course {
   id: number;
@@ -52,8 +53,10 @@ const CourseCardComponent: React.FC<CourseCardComponentProps> = ({ course }) => 
             {instructorName.charAt(0)}
           </div>
           <span className="mr-2 font-bold text-gray-900">{instructorName}</span>
-          <span className="hidden sm:inline mx-2">•</span>
-          <span className="text-xs">{course.uploadDate}</span>
+          <div className="flex items-center">
+            <Clock className="w-4 h-4 mr-1" />
+            <span className="text-xs">{course.uploadDate}</span>
+          </div>
         </div>
         {course.progressPercentage > 0 && (
           <div className="text-xs text-green-600 mb-2">

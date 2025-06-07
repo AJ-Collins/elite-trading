@@ -380,6 +380,9 @@ const User = () => {
                             <DropdownMenuItem onSelect={() => setNewUser({ ...newUser, role: 'admin' })}>
                               Admin
                             </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => setNewUser({ ...newUser, role: 'instructor' })}>
+                                Instructor
+                              </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -642,6 +645,9 @@ const User = () => {
                               </DropdownMenuItem>
                               <DropdownMenuItem onSelect={() => setSelectedUser({ ...selectedUser, role: 'admin' })}>
                                 Admin
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => setSelectedUser({ ...selectedUser, role: 'instructor' })}>
+                                Instructor
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>

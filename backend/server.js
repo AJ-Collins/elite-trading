@@ -14,7 +14,6 @@ const userSubscription = require('./routes/userSubscriptions');
 const paymentRoutes = require('./routes/paymentRoutes');
 const subscriptionRoutes = require('./routes/subscriptions');
 const liveSessionRoutes = require('./routes/liveSessions');
-const userLiveSessions = require('./routes/userLiveSessions');
 
 dotenv.config();
 
@@ -46,15 +45,15 @@ app.use('/uploads', express.static('uploads'));
 app.use('/api/notes', courseNotesRoutes);
 //Blogs routes
 app.use('/api/blogs', blogRoutes);
+//Live sessions
+app.use('/api/live-sessions', liveSessionRoutes);
+
 //User courses routes
 app.use('/api/user/courses', userCourses);
+
 //Payments
 app.use('/api/payments', paymentRoutes);
 app.use('/api', subscriptionRoutes);
-//Live sessions
-app.use('/api/live-sessions', liveSessionRoutes);
-//User sessions routes
-app.use('/api/user-sessions', userLiveSessions);
 
 
 // Test database connection

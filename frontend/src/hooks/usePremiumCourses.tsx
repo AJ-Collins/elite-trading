@@ -39,10 +39,11 @@ export const usePremiumCourses = (): UseUserSubscriptionCoursesResult => {
           return;
         }
 
-        const res = await fetch(`${API_URL}/api/user/courses/${user.id}`, {
+        const res = await fetch(`${API_URL}/api/user/courses/premium/${user.id}`, {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
           },
         });
 
@@ -51,10 +52,12 @@ export const usePremiumCourses = (): UseUserSubscriptionCoursesResult => {
           throw new Error(errorData.error?.message || 'Failed to fetch courses');
         }
 
-        const courseData = await res.json();
+        const premiumCourseData = await res.json();
+
+        console.log('Received premium courses data:', JSON.stringify(premiumCourseData, null, 2));
 
         // Format courses
-        const formattedCourses = courseData.map((course: any): Course => {
+        const formattedCourses = premiumCourseData.map((course: any): Course => {
           // Use course.thumbnail directly since backend provides it as a string path
           const thumbnailUrl = course.thumbnail
             ? `${API_URL}${course.thumbnail}`
@@ -65,6 +68,16 @@ export const usePremiumCourses = (): UseUserSubscriptionCoursesResult => {
             email: '', // Not available in current response
           };
 
+          const startTime = new Date(course.startTime || new Date());
+          const formattedDateTime = startTime.toLocaleString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+          });
+
           return {
             id: course.id,
             title: course.title || 'Untitled Course',
@@ -73,7 +86,7 @@ export const usePremiumCourses = (): UseUserSubscriptionCoursesResult => {
             image: thumbnailUrl,
             instructor,
             level: course.level || 'Beginner',
-            uploadDate: course.publishedWhen || 'Unknown Date',
+            uploadDate: formattedDateTime,
           };
         });
 

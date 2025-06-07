@@ -63,7 +63,7 @@ exports.initiateMpesaPayment = async (req, res) => {
         PartyA: formattedPhone,
         PartyB: MPESA_SHORTCODE,
         PhoneNumber: formattedPhone,
-        CallBackURL: `${MPESA_CALLBACK_URL}/api/mpesa/callback`, // won't be used now
+        CallBackURL: `${MPESA_CALLBACK_URL}/api/mpesa/callback`,
         AccountReference: `EliteHub-${transactionId}`,
         TransactionDesc: `Payment for ${planId}`,
       },

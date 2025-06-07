@@ -1,5 +1,5 @@
 const { LiveSession, User, Subscription } = require('../models');
-const { Op } = require('sequelize');
+const { Op, where } = require('sequelize');
 
 // Create a new live session
 exports.createLiveSession = async (req, res) => {
@@ -149,7 +149,7 @@ exports.getLiveSessions = async (req, res) => {
         { model: Subscription, as: 'subscriptions', attributes: ['id', 'type'], through: { attributes: [] } },
       ],
     });
-
+    
     res.json({ success: true, data: sessions });
   } catch (error) {
     console.error('Error fetching live sessions:', error);
@@ -196,50 +196,5 @@ exports.deleteLiveSession = async (req, res) => {
   } catch (error) {
     console.error('Error deleting live session:', error);
     res.status(500).json({ success: false, message: 'Failed to delete live session' });
-  }
-};
-
-exports.getUserSessions = async (req, res) => {
-  try {
-    const user = await User.findByPk(req.user.id, {
-      include: {
-        model: Subscription,
-        as: 'subscriptions',
-        attributes: ['id'],
-        through: { attributes: [] },
-      },
-    });
-
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    const subscriptionIds = user.subscriptions.map(sub => sub.id);
-
-    if (subscriptionIds.length === 0) {
-      return res.json({ success: true, data: [] });
-    }
-
-    const sessions = await LiveSession.findAll({
-      include: [
-        {
-          model: Subscription,
-          as: 'subscriptions',
-          where: { id: { [Op.in]: subscriptionIds } },
-          attributes: ['id', 'type'],
-          through: { attributes: [] },
-        },
-        {
-          model: User,
-          as: 'instructor',
-          attributes: ['id', 'username', 'email'],
-        },
-      ],
-    });
-
-    res.json({ success: true, data: sessions });
-  } catch (error) {
-    console.error('Error fetching user sessions:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch user sessions' });
   }
 };

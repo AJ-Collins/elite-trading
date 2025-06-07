@@ -3,6 +3,7 @@ const { sequelize } = require('../models');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { Op } = require('sequelize');
 
 // Set up Multer for file uploads
 const storage = multer.diskStorage({
@@ -177,62 +178,66 @@ async function getAllCourses(req, res) {
   // GET user courses (based on active subscriptions)
   async function getUserCourses(req, res) {
     try {
-      // Optional: You can still get the user if needed
       const userId = req.params.id;
+      console.log('getUserCourses called for user:', userId);
   
-      const courses = await Course.findAll({
-        include: [
-          { model: Subscription },
-          { model: CourseVideo },
-          { model: CourseNote }
-        ]
+      // Step 1: Fetch the user with their active subscriptions
+      const user = await User.findByPk(userId, {
+        include: {
+          model: Subscription,
+          as: 'Subscriptions',
+          attributes: ['id'],
+          through: {
+            attributes: [],
+            where: { isActive: true },
+          },
+        },
       });
   
-      return res.status(200).json(courses);
+      console.log('User found:', user ? JSON.stringify(user.toJSON(), null, 2) : null);
+      if (!user) {
+        console.log('User not found, returning 404');
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
   
+      const subscriptionIds = user.Subscriptions.map(sub => sub.id);
+      console.log('User subscription IDs:', subscriptionIds);
+  
+      if (subscriptionIds.length === 0) {
+        console.log('No active subscriptions found, returning empty array');
+        return res.status(200).json({ success: true, data: [] });
+      }
+  
+      // Step 2: Fetch courses linked to the user's subscriptions
+      const courses = await Course.findAll({
+        where: {
+          subscriptionId: { [Op.in]: subscriptionIds },
+        },
+        include: [
+          {
+            model: Subscription,
+            as: 'Subscription', // Corrected alias to match Course model
+            attributes: ['id', 'type'],
+          },
+          {
+            model: CourseVideo,
+            as: 'CourseVideos', // Matches hasMany association
+          },
+          {
+            model: CourseNote,
+            as: 'CourseNotes', // Matches hasMany association
+          },
+        ],
+      });
+  
+      console.log('Fetched courses:', JSON.stringify(courses, null, 2));
+      return res.status(200).json({ success: true, data: courses });
     } catch (error) {
       console.error('Error fetching user courses:', error);
-      res.status(500).json({ message: 'Failed to fetch user courses' });
+      return res.status(500).json({ success: false, message: 'Failed to fetch user courses' });
     }
   }
   
-  // async function getUserCourses(req, res) {
-  //   try {
-  //     const userId = req.params.id;
-
-  //     // Step 1: Get all active subscriptions for the user
-  //     const userWithSubscriptions = await User.findByPk(userId, {
-  //       include: {
-  //         model: Subscription,
-  //         through: { where: { isActive: true } }, // Only active subscriptions
-  //       }
-  //     });
-
-  //     if (!userWithSubscriptions || userWithSubscriptions.Subscriptions.length === 0) {
-  //       return res.status(200).json([]); // No access
-  //     }
-
-  //     const activeSubscriptionIds = userWithSubscriptions.Subscriptions.map(sub => sub.id);
-
-  //     // Step 2: Get all courses under those subscriptions
-  //     const courses = await Course.findAll({
-  //       where: {
-  //         subscriptionId: activeSubscriptionIds
-  //       },
-  //       include: [
-  //         { model: Subscription },
-  //         { model: CourseVideo },
-  //         { model: CourseNote }
-  //       ]
-  //     });
-
-  //     return res.status(200).json(courses);
-
-  //   } catch (error) {
-  //     console.error('Error fetching user courses:', error);
-  //     res.status(500).json({ message: 'Failed to fetch user courses' });
-  //   }
-  // }
 
 module.exports = {
     getAllCourses,

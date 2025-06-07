@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import DashboardHeader from "@/components/DashboardHeader";
 import DashboardFooter from "@/components/DashboardFooter";
 import { useAuth } from "../context/useAuth";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const COMPLETION_THRESHOLD = 90;
 
@@ -34,15 +36,40 @@ interface Video {
   title: string;
   source: string;
   isLocal: boolean;
+  access: string;
+  views: number;
+  order: number | null;
+  courseId: number;
 }
 
 interface Note {
   id: number;
   title: string;
   source: string;
+  isLocal: boolean;
+  type: string;
+  author: string;
+  access: string;
+  courseId: number;
 }
 
 interface Course {
+  id: number;
+  title: string;
+  description: string;
+  thumbnail: string;
+  publishedWhen: string;
+  author: string;
+  level: string;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  subscriptionId: number;
+  CourseVideos: Video[];
+  CourseNotes: Note[];
+}
+
+interface FormattedCourse {
   id: number;
   documentId?: string;
   title: string;
@@ -70,169 +97,104 @@ const CoursePage = () => {
   const navigate = useNavigate();
   const numericId = parseInt(id || "0", 10);
 
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [courses, setCourses] = useState<FormattedCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [course, setCourse] = useState<Course | null>(null);
+  const [course, setCourse] = useState<FormattedCourse | null>(null);
   const [courseInfo, setCourseInfo] = useState<any>(null);
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [videoType, setVideoType] = useState<"youtube" | "html5" | "unknown">("unknown");
   const [pdfError, setPdfError] = useState(false);
-
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const youtubePlayerRef = useRef<any>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCourseFinished, setIsCourseFinished] = useState(false);
   const [watchTime, setWatchTime] = useState(0);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [percentageWatched, setPercentageWatched] = useState(0);
   const [youtubeApiReady, setYoutubeApiReady] = useState(false);
   const { user, token } = useAuth();
   const API_URL = import.meta.env.VITE_API_URL;
 
-  // Fetch all courses and user subscriptions
+  // Fetch courses
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/user/courses/${user.id}`, {
+        setLoading(true);
+        const res = await fetch(`${API_URL}/api/user/courses/free`, {
           headers: {
-            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "Cache-Control": "no-cache",
           },
         });
+
         if (!res.ok) throw new Error(`Failed to fetch courses: ${res.status}`);
 
-        const data = await res.json();
-        console.log("Courses API response:", JSON.stringify(data, null, 2));
+        const data: Course[] = await res.json();
+        if (!Array.isArray(data)) throw new Error("Invalid data format");
 
-        if (!Array.isArray(data)) {
-          throw new Error("Courses data is not an array");
-        }
-
-        const formattedCourses = data.map((course: any) => ({
+        const formattedCourses: FormattedCourse[] = data.map((course: Course) => ({
           id: course.id,
           documentId: course.id.toString(),
-          title: course.title
-            ? course.title.replace("Begginers", "Beginners").replace("Intewrmidiate", "Intermediate")
-            : "",
-          slug: course.title
-            ? course.title.toLowerCase().replace(/\s+/g, "-")
-            : "",
-          description: course.description
-            ? course.description
-                .replace("Begginers", "Beginners")
-                .replace("Intewrmidiate", "Intermediate")
-            : "",
-          image: course.thumbnail
-            ? `${API_URL}${course.thumbnail}`
-            : " ",
+          title: course.title?.replace("Begginers", "Beginners").replace("Intewrmidiate", "Intermediate") || "Untitled Course",
+          slug: course.title?.toLowerCase().replace(/\s+/g, "-") || "untitled-course",
+          description: course.description?.replace("Begginers", "Beginners").replace("Intewrmidiate", "Intermediate") || "No description available",
+          image: course.thumbnail ? `${API_URL}${course.thumbnail}` : "/images/course_card.jpeg",
           videos: Array.isArray(course.CourseVideos)
-            ? course.CourseVideos.map((video: any) => ({
-                id: video.id,
-                title: video.title,
+            ? course.CourseVideos.map((video: Video) => ({
+                ...video,
                 source: video.isLocal ? `${API_URL}${video.source}` : video.source,
-                isLocal: video.isLocal,
-              })).sort((a: Video, b: Video) => a.id - b.id)
+              })).sort((a: Video, b: Video) => (a.order || a.id) - (b.order || b.id))
             : [],
           notes: Array.isArray(course.CourseNotes)
-            ? course.CourseNotes.map((note: any) => ({
-                id: note.id,
-                title: note.title,
+            ? course.CourseNotes.map((note: Note) => ({
+                ...note,
                 source: `${API_URL}${note.source}`,
               })).sort((a: Note, b: Note) => a.id - b.id)
             : [],
-          price: course.Subscription?.price ?? null,
-          isFree: course.price === 0 ?? false,
-          publishedWhen: course.publishedWhen ?? null,
-          instructor: course.author || "Default Instructor",
+          price: null,
+          isFree: true,
+          publishedWhen: course.publishedWhen,
+          instructor: course.author || "Unknown Instructor",
           level: course.level || "Beginner",
-          levelNumber: course.level === "Intermediate" ? 1 : 0,
+          levelNumber: course.level === "Intermediate" ? 1 : course.level === "Advanced" ? 2 : 0,
           uploadDate: course.createdAt || new Date().toISOString(),
-          rating: course.rating || 0,
-          color: course.level === "Intermediate" ? "#D69E2E" : "#3182CE",
-          modules: course.modules || [],
-          nextCourse: course.nextCourse || null,
+          rating: 0,
+          color: course.level === "Intermediate" ? "#D69E2E" : course.level === "Advanced" ? "#9F1239" : "#3182CE",
+          modules: [],
+          nextCourse: null,
           instructorAvatar: "/images/avatar.png",
         }));
 
         setCourses(formattedCourses);
-        setLoading(false);
+        setError(null);
       } catch (err: any) {
-        setError(err.message);
+        setError(err.message || "Failed to fetch courses");
+        toast.error("Failed to load courses");
+      } finally {
         setLoading(false);
       }
     };
 
-    const fetchUserSubscriptions = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/user/subscriptions/${user.id}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-        if (!res.ok) throw new Error(`Failed to fetch user subscriptions: ${res.status}`);
-
-        const userData = await res.json();
-        console.log("Subscriptions API response:", JSON.stringify(userData, null, 2));
-
-        if (userData?.data && numericId) {
-          const subscriptionCourses: any[] = [];
-          for (const sub of userData.data) {
-            const now = new Date("2025-05-23T11:55:00.000+03:00");
-            const endDate = new Date(sub.endDate);
-            if (sub.isActive && endDate > now) {
-              const courseRes = await fetch(`${API_URL}/api/user/courses/${user.id}`, {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
-              });
-              if (!courseRes.ok) continue;
-              const coursesData = await courseRes.json();
-              const matchingCourses = coursesData.filter(
-                (c: any) => c.subscriptionId === sub.subscriptionId
-              );
-              subscriptionCourses.push(...matchingCourses);
-            }
-          }
-          const targetSubscriptionCourse = subscriptionCourses.find(
-            (c: any) => c.id === numericId
-          );
-
-          if (targetSubscriptionCourse) {
-            localStorage.setItem("targetDocumentId", targetSubscriptionCourse.id.toString());
-          } else {
-            setError("Course not accessible: Subscription expired or invalid.");
-            setLoading(false);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching user subscriptions:", err);
-      }
-    };
-
-    if (user?.id && token) {
-      Promise.all([fetchCourses(), fetchUserSubscriptions()]);
-    } else {
-      setError("User not authenticated");
+    if (token && user?.id) fetchCourses();
+    else {
       setLoading(false);
+      setError("Authentication required");
+      toast.error("Please log in to access courses");
     }
-  }, [numericId, user?.id, token, API_URL]);
+  }, [token, user?.id, API_URL]);
 
-  // Match course by id or documentId and set initial video
+  // Set course and initial video
   useEffect(() => {
     if (!loading && courses.length > 0) {
       let foundCourse = courses.find((c) => c.id === numericId);
-
       if (!foundCourse) {
         const targetDocumentId = localStorage.getItem("targetDocumentId");
-        if (targetDocumentId) {
-          foundCourse = courses.find((c) => c.documentId === targetDocumentId);
-        }
+        if (targetDocumentId) foundCourse = courses.find((c) => c.documentId === targetDocumentId);
       }
 
       if (foundCourse) {
@@ -245,17 +207,19 @@ const CoursePage = () => {
           imageUrl: foundCourse.image,
           videos: foundCourse.videos,
           notes: foundCourse.notes,
-          publishedWhen: foundCourse.publishedWhen, // Add this field
+          publishedWhen: foundCourse.publishedWhen,
+          instructor: foundCourse.instructor,
+          instructorAvatar: foundCourse.instructorAvatar,
         });
-        setSelectedVideo(foundCourse.videos.length > 0 ? foundCourse.videos[0] : null);
-        setSelectedNote(null);
-        setVideoType(
-          foundCourse.videos.length > 0
-            ? getVideoType(foundCourse.videos[0].source)
-            : "unknown"
-        );
+
+        if (foundCourse.videos.length > 0) {
+          setSelectedVideo(foundCourse.videos[0]);
+          setVideoType(getVideoType(foundCourse.videos[0].source));
+        }
       } else if (courses.length > 0) {
         navigate(`/watch-course/${courses[0].id}`, { replace: true });
+      } else {
+        setError("No courses available. Please check back later or contact support.");
       }
     }
   }, [courses, numericId, loading, navigate]);
@@ -273,17 +237,13 @@ const CoursePage = () => {
     }
   }, [videoType, isModalOpen]);
 
-  // Initialize YouTube player & track time
+  // Initialize YouTube player
   useEffect(() => {
-    if (
-      videoType === "youtube" &&
-      youtubeApiReady &&
-      isModalOpen &&
-      selectedVideo?.source
-    ) {
+    if (videoType === "youtube" && youtubeApiReady && isModalOpen && selectedVideo?.source) {
       const videoId = extractYouTubeVideoId(selectedVideo.source);
       if (!videoId) {
         setVideoError("Invalid YouTube video URL");
+        toast.error("Invalid YouTube video URL");
         return;
       }
       youtubePlayerRef.current = new window.YT.Player("youtube-player", {
@@ -294,7 +254,7 @@ const CoursePage = () => {
           },
           onReady: () => console.log("YouTube player ready"),
         },
-        playerVars: { modestbranding: 1, rel: 0 },
+        playerVars: { modestbranding: 1, rel: 0, showinfo: 0 },
       });
 
       const trackingInterval = setInterval(() => {
@@ -313,27 +273,26 @@ const CoursePage = () => {
     }
   }, [youtubeApiReady, isModalOpen, videoType, selectedVideo]);
 
-  // Check completion threshold
+  // Mark course as completed
   useEffect(() => {
     if (percentageWatched >= COMPLETION_THRESHOLD && !isCourseFinished) {
       markCourseAsCompleted();
     }
   }, [percentageWatched, isCourseFinished]);
 
-  // Preload fallback images with error handling
+  // Preload images
   useEffect(() => {
-    const preloadImage = (src: string, onError: () => void) => {
+    const preloadImage = (src: string) => {
       const img = new Image();
       img.src = src;
-      img.onerror = onError;
-      img.onload = () => console.log(`Preloaded ${src}`);
+      img.onerror = () => console.warn(`Failed to preload ${src}`);
     };
-
-    preloadImage("/images/course_card.jpeg", () => console.warn("Failed to preload /images/course_card.jpeg"));
-    preloadImage("/images/default.jpg", () => console.warn("Failed to preload /images/default.jpg"));
+    preloadImage("/images/course_card.jpeg");
+    preloadImage("/images/default.jpg");
+    preloadImage("/images/avatar.png");
   }, []);
 
-  // Allow closing modal with Escape key
+  // Handle Escape key
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === "Escape" && isModalOpen) closeModal();
@@ -342,143 +301,28 @@ const CoursePage = () => {
     return () => window.removeEventListener("keydown", handleEsc);
   }, [isModalOpen]);
 
-  // Memoize nextCourse to return null if there is no next course
+  // Memoize next course
   const nextCourse = useMemo(() => {
+    if (!course) return null;
     const next = courses.find((c) => c.id > course?.id);
-    if (next) {
-      return {
-        id: next.id,
-        title: next.title,
-        image: next.image || "/images/default.jpg",
-        path: `/watch-course/${next.id}`,
-      };
-    }
-    return null;
+    return next
+      ? {
+          id: next.id,
+          title: next.title,
+          image: next.image || "/images/default.jpg",
+          path: `/watch-course/${next.id}`,
+        }
+      : null;
   }, [courses, course?.id]);
 
-  if (loading) {
-    return (
-      <div className="text-center py-10 text-gray-600">
-        <svg
-          className="animate-spin h-5 w-5 mx-auto mb-2"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-        </svg>
-        Loading course...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-10 text-red-500">
-        Error: {error}
-        <button
-          onClick={() => {
-            setError(null);
-            setLoading(true);
-            const fetchCourses = async () => {
-              try {
-                const res = await fetch(`${API_URL}/api/user/courses/${user.id}`, {
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                  },
-                });
-                if (!res.ok) throw new Error(`Failed to fetch courses: ${res.status}`);
-                const data = await res.json();
-                if (!Array.isArray(data)) throw new Error("Courses data is not an array");
-
-                const formattedCourses = data.map((course: any) => ({
-                  id: course.id,
-                  documentId: course.id.toString(),
-                  title: course.title
-                    ? course.title
-                        .replace("Begginers", "Beginners")
-                        .replace("Intewrmidiate", "Intermediate")
-                    : "",
-                  slug: course.title
-                    ? course.title.toLowerCase().replace(/\s+/g, "-")
-                    : "",
-                  description: course.description
-                    ? course.description
-                        .replace("Begginers", "Beginners")
-                        .replace("Intewrmidiate", "Intermediate")
-                    : "",
-                  image: course.thumbnail
-                    ? `${API_URL}${course.thumbnail}`
-                    : "/images/course_card.jpeg",
-                  videos: Array.isArray(course.CourseVideos)
-                    ? course.CourseVideos.map((video: any) => ({
-                        id: video.id,
-                        title: video.title,
-                        source: video.isLocal ? `${API_URL}${video.source}` : video.source,
-                        isLocal: video.isLocal,
-                      })).sort((a: Video, b: Video) => a.id - b.id)
-                    : [],
-                  notes: Array.isArray(course.CourseNotes)
-                    ? course.CourseNotes.map((note: any) => ({
-                        id: note.id,
-                        title: note.title,
-                        source: `${API_URL}${note.source}`,
-                      })).sort((a: Note, b: Note) => a.id - b.id)
-                    : [],
-                  price: course.Subscription?.price ?? null,
-                  isFree: course.price === 0 ?? false,
-                  publishedWhen: course.publishedWhen ?? null,
-                  instructor: course.author || "Default Instructor",
-                  level: course.level || "Beginner",
-                  levelNumber: course.level === "Intermediate" ? 1 : 0,
-                  uploadDate: course.createdAt || new Date().toISOString(),
-                  rating: course.rating || 0,
-                  color: course.level === "Intermediate" ? "#D69E2E" : "#3182CE",
-                  modules: course.modules || [],
-                  nextCourse: course.nextCourse || null,
-                  instructorAvatar: "/images/avatar.png",
-                }));
-
-                setCourses(formattedCourses);
-                setLoading(false);
-              } catch (err: any) {
-                setError(err.message);
-                setLoading(false);
-              }
-            };
-            fetchCourses();
-          }}
-          className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  if (!course || !courseInfo) {
-    return <p className="text-center py-10 text-gray-600">Looking for your course...</p>;
-  }
-
-  const handleBack = () => navigate("/dashboard");
-
   const closeModal = () => {
-    if (videoType === "youtube" && youtubePlayerRef.current)
-      youtubePlayerRef.current.pauseVideo();
+    if (videoType === "youtube" && youtubePlayerRef.current) youtubePlayerRef.current.pauseVideo();
     if (videoType === "html5" && videoRef.current) videoRef.current.pause();
     setIsModalOpen(false);
-    setSelectedVideo(courseInfo.videos.length > 0 ? courseInfo.videos[0] : null);
+    setSelectedVideo(courseInfo?.videos.length > 0 ? courseInfo.videos[0] : null);
     setSelectedNote(null);
     setPdfError(false);
+    setIsSidebarOpen(false);
   };
 
   const markCourseAsCompleted = () => {
@@ -490,7 +334,12 @@ const CoursePage = () => {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ courseId: courseInfo?.id, userId: user?.id }),
-    }).catch((err) => console.error("Error marking course as completed:", err));
+    })
+      .then(() => toast.success("Course marked as completed!"))
+      .catch((err) => {
+        console.error("Error marking course as completed:", err);
+        toast.error("Failed to mark course as completed");
+      });
   };
 
   const handleVideoTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -502,27 +351,7 @@ const CoursePage = () => {
     setPercentageWatched(percentage);
   };
 
-  const handleVideoEnded = () => markCourseAsCompleted();
-
-  const formatRelativeDate = (dateString: string | null) => {
-    if (!dateString) return "Unknown date";
-    const date = new Date(dateString);
-    const now = new Date("2025-05-23T11:55:00.000+03:00"); // 11:55 AM EAT
-    const diffInMs = now.getTime() - date.getTime();
-    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-
-    if (diffInMinutes < 60) {
-      return `${diffInMinutes} minute${diffInMinutes === 1 ? "" : "s"} ago`;
-    } else if (diffInMinutes < 1440) {
-      const diffInHours = Math.floor(diffInMinutes / 60);
-      return `${diffInHours} hour${diffInHours === 1 ? "" : "s"} ago`;
-    } else {
-      const diffInDays = Math.floor(diffInMinutes / 1440);
-      return `${diffInDays} day${diffInDays === 1 ? "" : "s"} ago`;
-    }
-  };
-
-  const handleVideoSelect = async (video: Video) => {
+  const handleVideoSelect = (video: Video) => {
     setSelectedVideo(video);
     setSelectedNote(null);
     setVideoType(getVideoType(video.source));
@@ -530,19 +359,7 @@ const CoursePage = () => {
     setWatchTime(0);
     setIsCourseFinished(false);
     setVideoError(null);
-
-    // Update views
-    try {
-      await fetch(`${API_URL}/api/videos/${video.id}/view`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    } catch (err) {
-      console.error("Error updating video views:", err);
-    }
+    setIsModalOpen(true);
   };
 
   const handleNoteSelect = (note: Note) => {
@@ -554,142 +371,203 @@ const CoursePage = () => {
     setIsCourseFinished(false);
     setVideoError(null);
     setPdfError(false);
+    setIsModalOpen(true);
   };
 
-  return (
-    <div className="bg-gray-50 min-h-screen font-poppins">
-      <DashboardHeader
-        isDropdownOpen={isDropdownOpen}
-        setIsDropdownOpen={setIsDropdownOpen}
-      />
-      <div className="container mx-auto px-4 py-12">
-        {/* Back Button */}
-        <button
-          onClick={handleBack}
-          className="mb-8 flex items-center text-gray-700 hover:text-green-600 transition-colors duration-200"
-          aria-label="Back to all courses"
-        >
-          <svg className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-            <path
-              fillRule="evenodd"
-              d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-              clipRule="evenodd"
-            />
-          </svg>
-          <span className="text-sm font-medium">Back to All Courses</span>
-        </button>
+  const formatRelativeDate = (dateString: string | null) => {
+    if (!dateString) return "Unknown date";
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInMs = now.getTime() - date.getTime();
+    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
 
-        {/* Main Course Section */}
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Course Image */}
-          <div className="w-full lg:w-1/2">
-            <div className="relative overflow-hidden rounded-2xl shadow-lg">
-              <img
-                src={courseInfo.imageUrl}
-                alt={courseInfo.title}
-                className="w-full aspect-video object-cover transition-transform duration-300 hover:scale-105"
-                loading="lazy"
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  if (target.src.includes("/images/course_card.jpeg")) {
-                    target.src = "https://via.placeholder.com/640x360?text=Course+Image+Not+Found";
-                  } else {
-                    target.src = "/images/course_card.jpeg";
-                  }
-                  target.onerror = null;
-                }}
-              />
-            </div>
-          </div>
+    if (diffInMinutes < 60) return `${diffInMinutes} minute${diffInMinutes === 1 ? "" : "s"} ago`;
+    if (diffInMinutes < 1440) {
+      const diffInHours = Math.floor(diffInMinutes / 60);
+      return `${diffInHours} hour${diffInHours === 1 ? "" : "s"} ago`;
+    }
+    const diffInDays = Math.floor(diffInMinutes / 1440);
+    return `${diffInDays} day${diffInDays === 1 ? "" : "s"} ago`;
+  };
 
-          {/* Up Next Section (Conditional) */}
-          {nextCourse && (
-            <div className="w-full lg:w-1/2">
-              <div className="border-l-4 border-green-600 pl-4 mb-6">
-                <div className="text-gray-600 text-sm font-semibold tracking-wide uppercase">
-                  Up Next in This Stage
-                </div>
-              </div>
-              <div className="flex items-center gap-4 mb-6">
-                <img
-                  src={nextCourse.image}
-                  alt={nextCourse.title}
-                  className="w-32 h-20 object-cover rounded-lg shadow-md transition-transform duration-300 hover:scale-105"
-                  loading="lazy"
-                  onError={(e) => {
-                    const target = e.currentTarget;
-                    if (target.src.includes("/images/default.jpg")) {
-                      target.src = "https://via.placeholder.com/160x120?text=Next+Course+Image+Not+Found";
-                    } else {
-                      target.src = "/images/default.jpg";
-                    }
-                    target.onerror = null;
-                  }}
-                />
-                <div className="font-medium text-gray-800">{nextCourse.title}</div>
-              </div>
-              <button
-                onClick={() => navigate(nextCourse.path)}
-                className="w-full bg-white border-2 border-gray-300 rounded-xl py-3 px-6 text-green-600 font-semibold hover:bg-green-50 hover:border-green-600 transition-all duration-200"
-                aria-label={`Start next course: ${nextCourse.title}`}
-              >
-                Start Next Course
-              </button>
-            </div>
-          )}
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 font-sans">
+         <DashboardHeader isDropdownOpen={isDropdownOpen} setIsDropdownOpen={setIsDropdownOpen} />
+        <div className="flex items-center justify-center h-[80vh]">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-600"></div>
+          <p className="ml-4 text-lg text-gray-600">Loading course content...</p>
         </div>
+        <DashboardFooter />
+      </div>
+    );
+  }
 
-        {/* Course Details */}
-        <div className="mt-12 px-4 lg:px-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">{courseInfo.title}</h1>
-          <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-6">
-            <p>
-              <span className="font-medium">Published:</span> {formatRelativeDate(courseInfo.publishedWhen)}
-            </p>
-            <p>
-              <span className="font-medium">Level:</span> {courseInfo.level}
-            </p>
-            <p>
-              <span className="font-medium">Instructor:</span> {course.instructor}
-            </p>
-          </div>
-          <p className="text-gray-700 leading-relaxed mb-8">{courseInfo.description}</p>
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 font-sans">
+         <DashboardHeader isDropdownOpen={isDropdownOpen} setIsDropdownOpen={setIsDropdownOpen} />
+        <div className="flex flex-col items-center justify-center h-[80vh] text-center">
+          <svg className="h-16 w-16 text-red-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-xl text-gray-800 mb-4">{error}</p>
           <button
-            onClick={() => setIsModalOpen(true)}
-            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-4 px-8 rounded-xl shadow-md transition-all duration-200"
-            aria-label={`Start course: ${courseInfo.title}`}
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Retry loading course"
           >
-            Start Course
+            Retry
           </button>
         </div>
+        <DashboardFooter />
       </div>
+    );
+  }
 
-      {/* Modal for Videos and Notes */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex justify-center items-center z-50 p-4">
-          <div className="text-white rounded-2xl max-w-7xl w-full h-[90vh] flex flex-col md:flex-row gap-6 bg-gray-900 shadow-2xl">
-            {/* Left Sidebar: List of Videos and Notes */}
-            <div className="w-full md:w-1/4 bg-gray-800 p-6 rounded-l-2xl max-h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
-              <h2 className="text-xl font-bold mb-6 text-green-400 flex items-center gap-2">
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+  if (!course || !courseInfo) {
+    return (
+      <div className="min-h-screen bg-gray-50 font-sans">
+         <DashboardHeader isDropdownOpen={isDropdownOpen} setIsDropdownOpen={setIsDropdownOpen} />
+        <div className="flex flex-col items-center justify-center h-[80vh] text-center">
+          <svg className="h-16 w-16 text-gray-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.29-1.175-5.5-2.709M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <p className="text-xl text-gray-800 mb-4">Course not found</p>
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Back to dashboard"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+        <DashboardFooter />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 font-sans">
+      <DashboardHeader isDropdownOpen={isDropdownOpen} setIsDropdownOpen={setIsDropdownOpen} />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Breadcrumb */}
+        <nav className="flex mb-6" aria-label="Breadcrumb">
+          <ol className="flex items-center space-x-2">
+            <li>
+              <button
+                onClick={() => navigate("/dashboard")}
+                className="flex items-center text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
+                aria-label="Back to dashboard"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                 </svg>
-                Course Content
-              </h2>
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold mb-3 text-gray-300">Videos</h3>
+                Dashboard
+              </button>
+            </li>
+            <li>
+              <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </li>
+            <li className="text-sm font-medium text-gray-500 truncate max-w-xs">{courseInfo.title}</li>
+          </ol>
+        </nav>
+
+        {/* Course Hero */}
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden mb-8">
+          <div className="relative">
+            <img
+              src={courseInfo.imageUrl}
+              alt={courseInfo.title}
+              className="w-full h-64 object-cover"
+              loading="lazy"
+              onError={(e) => {
+                e.currentTarget.src = "/images/course_card.jpeg";
+              }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-center justify-center">
+              <button
+                onClick={() => {
+                  if (courseInfo.videos.length > 0) {
+                    handleVideoSelect(courseInfo.videos[0]);
+                    setIsModalOpen(true);
+                  }
+                }}
+                className="bg-blue-600 text-white rounded-full p-4 shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"
+                disabled={!courseInfo.videos.length}
+                aria-label="Play first video"
+              >
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div className="p-6">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{courseInfo.title}</h1>
+            <p className="text-gray-600 mb-4 leading-relaxed">{courseInfo.description}</p>
+            <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+              <div className="flex items-center">
+                <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                {courseInfo.instructor}
+              </div>
+              <div className="flex items-center">
+                <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+                {courseInfo.level}
+              </div>
+              <div className="flex items-center">
+                <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                {formatRelativeDate(courseInfo.publishedWhen)}
+              </div>
+            </div>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Start course"
+            >
+              Start Course
+            </button>
+          </div>
+        </div>
+
+        {/* Course Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Sidebar */}
+          <aside className={`lg:col-span-1 bg-white rounded-2xl shadow-lg p-6 ${isSidebarOpen ? "block" : "hidden"} lg:block fixed lg:static inset-y-0 left-0 w-80 bg-white z-40 transform ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} transition-transform duration-300 lg:translate-x-0`}>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-gray-900">Course Content</h2>
+              <button
+                className="lg:hidden text-gray-600 hover:text-gray-800"
+                onClick={() => setIsSidebarOpen(false)}
+                aria-label="Close sidebar"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 uppercase tracking-wider mb-3">Videos ({courseInfo.videos.length})</h3>
                 {courseInfo.videos.length > 0 ? (
-                  courseInfo.videos.map((video: Video) => (
+                  courseInfo.videos.map((video) => (
                     <button
                       key={video.id}
                       onClick={() => handleVideoSelect(video)}
-                      className={`w-full text-left p-3 rounded-lg mb-2 flex items-center gap-3 transition-all duration-200 ${
-                        selectedVideo?.id === video.id
-                          ? "bg-green-500 text-white"
-                          : "bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white"
+                      className={`w-full text-left p-3 rounded-lg flex items-center gap-3 text-sm transition-colors duration-200 ${
+                        selectedVideo?.id === video.id ? "bg-blue-100 text-blue-800" : "hover:bg-gray-100"
                       }`}
+                      aria-label={`Play video: ${video.title}`}
                     >
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -697,168 +575,357 @@ const CoursePage = () => {
                     </button>
                   ))
                 ) : (
-                  <p className="text-gray-400 text-sm">No videos available.</p>
+                  <p className="text-gray-500 text-sm">No videos available</p>
                 )}
               </div>
               <div>
-                <h3 className="text-sm font-semibold mb-3 text-gray-300">Notes</h3>
+                <h3 className="text-sm font-medium text-gray-700 uppercase tracking-wider mb-3">Notes ({courseInfo.notes.length})</h3>
                 {courseInfo.notes.length > 0 ? (
-                  courseInfo.notes.map((note: Note) => (
+                  courseInfo.notes.map((note) => (
                     <button
                       key={note.id}
                       onClick={() => handleNoteSelect(note)}
-                      className={`w-full text-left p-3 rounded-lg mb-2 flex items-center gap-3 transition-all duration-200 ${
-                        selectedNote?.id === note.id
-                          ? "bg-green-500 text-white"
-                          : "bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white"
+                      className={`w-full text-left p-3 rounded-lg flex items-center gap-3 text-sm transition-colors duration-200 ${
+                        selectedNote?.id === note.id ? "bg-blue-100 text-blue-800" : "hover:bg-gray-100"
                       }`}
+                      aria-label={`View note: ${note.title}`}
                     >
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       <span className="truncate">{note.title}</span>
                     </button>
                   ))
                 ) : (
-                  <p className="text-gray-400 text-sm">No notes available.</p>
+                  <p className="text-gray-500 text-sm">No notes available</p>
+                )}
+              </div>
+            </div>
+          </aside>
+
+          {/* Main Content */}
+          <div className="lg:col-span-3 space-y-8">
+            {/* Course Resources */}
+            <div className="bg-white rounded-2xl shadow-lg p-6 ml-4">
+              <h2 className="text-xl font-semibold text-gray-900 mb-6">Course Resources</h2>
+              <div className="space-y-4">
+                {courseInfo.videos.length === 0 && courseInfo.notes.length === 0 ? (
+                  <p className="text-gray-500 text-sm">No resources available for this course.</p>
+                ) : (
+                  <>
+                    {courseInfo.videos.map((video, index) => (
+                      <div
+                        key={video.id}
+                        className={`flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors duration-200 ${
+                          index === courseInfo.videos.length - 1 && courseInfo.notes.length === 0 ? "" : "border-b-0"
+                        }`}
+                      >
+                        <div className="flex-shrink-0 w-16 h-9 bg-gray-100 rounded-md flex items-center justify-center">
+                          <button
+                            onClick={() => handleVideoSelect(video)}
+                            className="flex items-center justify-center w-full h-full bg-black/30 hover:bg-black/40 transition-colors"
+                            aria-label={`Play video: ${video.title}`}
+                          >
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-base font-medium text-gray-900 truncate">{video.title}</h3>
+                          <p className="text-sm text-gray-500">Video • {Math.floor(video.views / 60) || 5} min</p>
+                        </div>
+                      </div>
+                    ))}
+                    {courseInfo.notes.map((note, index) => (
+                      <div
+                        key={note.id}
+                        className={`flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors duration-200 ${
+                          index === courseInfo.notes.length - 1 ? "" : "border-b-0"
+                        }`}
+                      >
+                        <div className="flex-shrink-0 w-16 h-9 bg-gray-100 rounded-md flex items-center justify-center">
+                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-base font-medium text-gray-900 truncate">{note.title}</h3>
+                          <p className="text-sm text-gray-500">PDF Document</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleNoteSelect(note)}
+                            className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            aria-label={`View note: ${note.title}`}
+                          >
+                            View
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </>
                 )}
               </div>
             </div>
 
-            {/* Right Content: Display Selected Video or Note */}
-            <div className="w-full md:w-3/4 flex flex-col p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">
-                  {selectedVideo ? selectedVideo.title : selectedNote ? selectedNote.title : "Select Content"}
-                </h3>
+            {/* Up Next */}
+            {nextCourse && (
+              <div className="bg-white rounded-2xl shadow-lg p-6 ml-4">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Up Next</h2>
+                <div className="flex items-center gap-4">
+                  <img
+                    src={nextCourse.image}
+                    alt={nextCourse.title}
+                    className="w-24 h-16 object-cover rounded-lg"
+                    loading="lazy"
+                    onError={(e) => {
+                      e.currentTarget.src = "/images/default.jpg";
+                    }}
+                  />
+                  <div>
+                    <h3 className="text-base font-medium text-gray-800">{nextCourse.title}</h3>
+                    <button
+                      onClick={() => navigate(nextCourse.path)}
+                      className="mt-2 text-blue-600 hover:underline text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      aria-label={`Start next course: ${nextCourse.title}`}
+                    >
+                      Start Now
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 truncate">
+                {selectedVideo?.title || selectedNote?.title || "Resource Viewer"}
+              </h3>
+              <div className="flex gap-2">
+                <button
+                  className="lg:hidden text-gray-600 hover:text-gray-800"
+                  onClick={() => setIsSidebarOpen(true)}
+                  aria-label="Open sidebar"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
                 <button
                   onClick={closeModal}
-                  className="text-gray-400 hover:text-white flex items-center gap-2 transition-colors duration-200"
-                  aria-label="Close video modal"
+                  className="text-gray-600 hover:text-gray-800"
+                  aria-label="Close modal"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                   </svg>
-                  Close
                 </button>
               </div>
-              <div className="w-full h-[60vh] bg-black rounded-xl flex items-center justify-center relative shadow-inner">
+            </div>
+            <div className="flex flex-1 overflow-hidden">
+              <aside className={`w-80 bg-gray-50 p-6 overflow-y-auto ${isSidebarOpen ? "block" : "hidden"} lg:block`}>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Course Content</h3>
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 uppercase tracking-wider mb-3">Videos ({courseInfo.videos.length})</h4>
+                    {courseInfo.videos.length > 0 ? (
+                      courseInfo.videos.map((video) => (
+                        <button
+                          key={video.id}
+                          onClick={() => handleVideoSelect(video)}
+                          className={`w-full text-left p-3 rounded-lg flex items-center gap-3 text-sm transition-colors duration-200 ${
+                            selectedVideo?.id === video.id ? "bg-blue-100 text-blue-800" : "hover:bg-gray-100"
+                          }`}
+                          aria-label={`Play video: ${video.title}`}
+                        >
+                          <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="truncate">{video.title}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="text-gray-500 text-sm">No videos available</p>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 uppercase tracking-wider mb-3">Notes ({courseInfo.notes.length})</h4>
+                    {courseInfo.notes.length > 0 ? (
+                      courseInfo.notes.map((note) => (
+                        <button
+                          key={note.id}
+                          onClick={() => handleNoteSelect(note)}
+                          className={`w-full text-left p-3 rounded-lg flex items-center gap-3 text-sm transition-colors duration-200 ${
+                            selectedNote?.id === note.id ? "bg-blue-100 text-blue-800" : "hover:bg-gray-100"
+                          }`}
+                          aria-label={`View note: ${note.title}`}
+                        >
+                          <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span className="truncate">{note.title}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="text-gray-500 text-sm">No notes available</p>
+                    )}
+                  </div>
+                </div>
+              </aside>
+              <div className="flex-1 p-6">
                 {videoError ? (
-                  <p className="text-white">{videoError}</p>
+                  <div className="h-full flex items-center justify-center text-center">
+                    <div>
+                      <svg className="w-12 h-12 mx-auto mb-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <p className="text-lg font-medium text-gray-900 mb-4">{videoError}</p>
+                      {selectedVideo?.source && (
+                        <a
+                          href={selectedVideo.source}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          aria-label="Open video in new tab"
+                        >
+                          Open in New Tab
+                        </a>
+                      )}
+                    </div>
+                  </div>
                 ) : selectedVideo && videoType === "youtube" ? (
-                  <div id="youtube-player" className="w-full h-full rounded-xl"></div>
+                  <div className="aspect-w-16 aspect-h-9 bg-black rounded-lg overflow-hidden">
+                    <div id="youtube-player" className="w-full h-full"></div>
+                  </div>
                 ) : selectedVideo && videoType === "html5" ? (
-                  <>
+                  <div className="aspect-w-16 aspect-h-9 bg-black rounded-lg overflow-hidden relative">
                     <video
                       ref={videoRef}
                       src={selectedVideo.source}
                       controls
-                      className="w-full h-full rounded-xl object-contain"
+                      className="w-full h-full object-contain"
                       onTimeUpdate={handleVideoTimeUpdate}
-                      onEnded={handleVideoEnded}
+                      onEnded={markCourseAsCompleted}
                     />
                     <button
                       onClick={() => videoRef.current?.requestFullscreen()}
-                      className="absolute top-2 right-2 p-2 bg-gray-800 rounded-full text-white hover:bg-gray-700 transition-colors duration-200"
+                      className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
+                      aria-label="Enter fullscreen"
                     >
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4h4m12 0h-4v4m-8 12v-4h-4m12 4h-4v-4" />
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                       </svg>
                     </button>
-                  </>
+                  </div>
                 ) : selectedNote ? (
-                  <div className="w-full h-full flex flex-col items-center">
+                  <div className="h-full flex flex-col">
                     {pdfError ? (
-                      <div className="text-white text-center p-4">
-                        <p className="mb-2">Unable to display PDF. Please open or download it instead.</p>
-                        <div className="flex gap-2 justify-center">
-                          <a
-                            href={selectedNote.source}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors duration-200"
-                          >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                            </svg>
-                            Open in New Tab
-                          </a>
-                          <a
-                            href={selectedNote.source}
-                            download
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors duration-200"
-                          >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                            Download
-                          </a>
+                      <div className="h-full flex items-center justify-center text-center">
+                        <div>
+                          <svg className="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <p className="text-lg font-medium text-gray-900 mb-2">Unable to display PDF</p>
+                          <p className="text-gray-500 mb-4">The document couldn't be loaded in the viewer.</p>
+                          <div className="flex gap-3 justify-center">
+                            <a
+                              href={selectedNote.source}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              aria-label="Open note in new tab"
+                            >
+                              Open in New Tab
+                            </a>
+                            <a
+                              href={selectedNote.source}
+                              download
+                              onClick={() => toast.success("Download started")}
+                              className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300"
+                              aria-label="Download note"
+                            >
+                              Download
+                            </a>
+                          </div>
                         </div>
                       </div>
                     ) : (
-                      <>
+                      <div className="flex-1 flex flex-col">
                         <iframe
                           src={selectedNote.source}
-                          className="w-full h-full rounded-xl"
+                          className="w-full flex-1 rounded-t-lg"
                           title={selectedNote.title}
                           onError={() => setPdfError(true)}
                         />
-                        <div className="mt-2 flex gap-2">
-                          <a
-                            href={selectedNote.source}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors duration-200"
-                          >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                            </svg>
-                            Open in New Tab
-                          </a>
-                          <a
-                            href={selectedNote.source}
-                            download
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors duration-200"
-                          >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                            Download
-                          </a>
+                        <div className="p-4 bg-gray-50 rounded-b-lg flex justify-between items-center">
+                          <div>
+                            <h4 className="text-sm font-medium text-gray-700">{selectedNote.title}</h4>
+                            <p className="text-xs text-gray-500">PDF Document</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <a
+                              href={selectedNote.source}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              aria-label="Open note in new tab"
+                            >
+                              Open
+                            </a>
+                            <a
+                              href={selectedNote.source}
+                              download
+                              onClick={() => toast.success("Download started")}
+                              className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md text-sm hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300"
+                              aria-label="Download note"
+                            >
+                              Download
+                            </a>
+                          </div>
                         </div>
-                      </>
+                      </div>
                     )}
                   </div>
                 ) : (
-                  <p className="text-white">Select a video or note to view.</p>
+                  <div className="h-full flex items-center justify-center text-gray-500">
+                    Please select a video or note to view
+                  </div>
+                )}
+                {selectedVideo && (
+                  <div className="p-4 bg-gray-50 border-t border-gray-200">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium text-gray-700">
+                        Progress: {Math.round(percentageWatched)}%
+                      </span>
+                      {isCourseFinished && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Completed
+                        </span>
+                      )}
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div
+                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                        style={{ width: `${percentageWatched}%` }}
+                      ></div>
+                    </div>
+                  </div>
                 )}
               </div>
-              {selectedVideo && percentageWatched > 0 && percentageWatched < COMPLETION_THRESHOLD && (
-                <div className="mt-4">
-                  <div className="h-3 w-full bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-green-500 rounded-full transition-all duration-300"
-                      style={{ width: `${percentageWatched}%` }}
-                    ></div>
-                  </div>
-                  <div className="text-xs text-gray-400 mt-2 text-center">
-                    {Math.round(percentageWatched)}% complete
-                  </div>
-                </div>
-              )}
-              {selectedVideo && isCourseFinished && (
-                <div className="mt-4 text-green-400 text-center font-bold flex items-center justify-center gap-2">
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  Video marked as completed!
-                </div>
-              )}
             </div>
           </div>
         </div>
       )}
       <DashboardFooter />
+      <ToastContainer position="bottom-right" autoClose={3000} />
     </div>
   );
 };

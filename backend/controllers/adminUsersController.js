@@ -144,7 +144,7 @@ async function getAllInstructors(req, res) {
       const instructors = await User.findAll({
           attributes: ['id', 'username', 'email', 'role', 'referralCode', 'status', 'createdAt'],
           where: {
-              role: 'instructor'
+              role: 'admin'
           }
       });
 
