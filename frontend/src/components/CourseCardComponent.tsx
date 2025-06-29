@@ -1,6 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock } from 'lucide-react';
+import { useAuth } from '../context/useAuth'; // Import useAuth
+import { toast } from 'react-toastify'; // Import toast for notifications
+import 'react-toastify/dist/ReactToastify.css'; // Import toast styles
 
 interface Course {
   id: number;
@@ -12,18 +15,45 @@ interface Course {
   level: string;
   uploadDate: string;
   progressPercentage: number;
-  subscriptionPrice?: number; // Optional: to indicate free (0) or premium (>0)
+  subscriptionPrice?: number;
+  archived: boolean; // Add archived property
 }
 
 interface CourseCardComponentProps {
   course: Course;
+  onUnarchive?: (courseId: number) => void; // Optional callback to notify parent of unarchive
 }
 
-const CourseCardComponent: React.FC<CourseCardComponentProps> = ({ course }) => {
+const CourseCardComponent: React.FC<CourseCardComponentProps> = ({ course, onUnarchive }) => {
   const navigate = useNavigate();
+  const { token, user } = useAuth();
+  const API_URL = import.meta.env.VITE_API_URL;
 
   const handleNavigate = () => {
     navigate(`/watch-course/${course.id}`);
+  };
+
+  const handleUnarchive = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`${API_URL}/api/user/courses/unarchive`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+        body: JSON.stringify({ courseId: course.id, userId: user?.id }),
+      });
+
+      if (!res.ok) throw new Error(`Failed to unarchive course: ${res.status}`);
+
+      toast.success('Course unarchived successfully!');
+      if (onUnarchive) onUnarchive(course.id);
+    } catch (err: any) {
+      console.error('Error unarchiving course:', err);
+      toast.error('Failed to unarchive course');
+    }
   };
 
   const instructorName = course.instructor.name
@@ -68,16 +98,31 @@ const CourseCardComponent: React.FC<CourseCardComponentProps> = ({ course }) => 
             {course.subscriptionPrice === 0 ? 'Free Subscription' : 'Premium Subscription'}
           </div>
         )}
-        <div className="flex items-center justify-end">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleNavigate();
-            }}
-            className="bg-green-500 hover:bg-green-600 text-white text-xs font-medium px-3 py-1 rounded-full transition-colors"
-          >
-            {course.progressPercentage > 0 ? 'Continue' : 'Start'}
-          </button>
+        {course.archived && (
+          <div className="text-xs text-gray-600 mb-2">Archived</div>
+        )}
+        <div className="flex items-center justify-end gap-2">
+          {course.archived ? (
+            <button
+              style={{ borderBottomRightRadius: 0 }}
+              onClick={handleUnarchive}
+              className="bg-green-100 text-gray-700 hover:bg-green-200 text-xs font-medium px-3 py-1 rounded-full transition-colors"
+              aria-label="Unarchive course"
+            >
+              Unarchive
+            </button>
+          ) : (
+            <button
+              style={{ borderBottomRightRadius: 0 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNavigate();
+              }}
+              className="bg-green-500 hover:bg-green-600 text-white text-xs font-medium px-3 py-1 rounded-full transition-colors"
+            >
+              {course.progressPercentage > 0 ? 'Continue' : 'Start'}
+            </button>
+          )}
         </div>
       </div>
     </div>

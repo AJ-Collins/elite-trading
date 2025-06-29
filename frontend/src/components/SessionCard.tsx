@@ -40,6 +40,9 @@ const SessionCard = ({ session, isLive, isUpcoming, isEnded }) => {
         </div>
         <div className="flex items-center justify-end">
           <a
+            style={{
+              borderBottomRightRadius: 0,
+            }}
             href={isEnded ? '#' : session.streamUrl}
             target={isEnded ? '_self' : '_blank'}
             rel="noopener noreferrer"

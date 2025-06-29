@@ -37,6 +37,9 @@ module.exports = (sequelize, DataTypes) => {
         otherKey: 'userId',
         as: 'ArchivedByUsers',
       });
+      Course.hasMany(models.VideoProgress, { foreignKey: 'courseId' });
+      Course.hasMany(models.NoteProgress, { foreignKey: 'courseId' });
+      Course.hasMany(models.CourseProgress, { foreignKey: 'courseId' });
     };
   
     return Course;

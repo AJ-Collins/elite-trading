@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { Op, where } = require('sequelize');
+const { assert } = require('console');
 
 async function getUserFreeCourses(req, res) {
     try {
@@ -139,8 +140,108 @@ async function getUserLiveSessions(req, res) {
     }
 }
 
+async function archiveCourse(req, res) {
+    try {
+      const { courseId, userId } = req.body;
+  
+      if (!courseId || !userId) {
+        return res.status(400).json({ message: "Missing courseId or userId" });
+      }
+  
+      // Find the course
+      const course = await Course.findByPk(courseId);
+      if (!course) {
+        return res.status(404).json({ message: "Course not found" });
+      }
+  
+      // Set the course as archived
+      course.archived = true;
+      await course.save();
+  
+      // Create ArchivedCourse record (if it doesn't already exist)
+      await ArchivedCourse.findOrCreate({
+        where: { courseId, userId },
+        defaults: {
+          courseId,
+          userId,
+        },
+      });
+  
+      res.status(200).json({ message: "Course archived successfully" });
+    } catch (error) {
+      console.error("Error archiving course:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+}
+
+async function unArchiveCourse(req, res) {
+    try {
+      const userId = req.user.id;
+      const { courseId } = req.body;
+  
+      if (!courseId) {
+        return res.status(400).json({ message: 'Missing courseId in request body' });
+      }
+  
+      console.log(`Unarchiving course ID: ${courseId} for user ID: ${userId}`);
+  
+      const course = await Course.findByPk(courseId);
+      if (!course) {
+        return res.status(404).json({ message: "Course not found" });
+      }
+
+      // Set the course as archived
+      course.archived = false;
+      await course.save();
+      
+      // Remove the entry from the ArchivedCourse join table
+      await ArchivedCourse.destroy({
+        where: {
+          courseId,
+          userId,
+        },
+      });
+  
+      res.status(200).json({ message: 'Course successfully unarchived' });
+    } catch (error) {
+      console.error('Error unarchiving course:', error);
+      res.status(500).json({ message: 'Failed to unarchive course' });
+    }
+}
+
+async function getArchivedCourses(req, res) {
+    try {
+        const userId = req.user.id;
+
+        console.log(`Fetching archived courses for user ID: ${userId}`);
+
+        const archivedCourses = await Course.findAll({
+            include: [{
+              model: User,
+              as: 'ArchivedByUsers',
+              where: { id: userId },
+              through: { attributes: [] },
+              attributes: [],
+              required: true,
+            }],
+        });
+
+        archivedCourses.forEach((course, index) => {
+            console.log(`  ${index + 1}. ${course.title} (ID: ${course.id})`);
+        });
+
+        res.status(200).json(archivedCourses);
+    } catch (error) {
+      console.error('Error fetching courses:', error);
+      res.status(500).json({ message: 'Failed to fetch courses' });
+    }
+}
+
 module.exports = {
     getUserFreeCourses,
     getUserPremiumCourses,
-    getUserLiveSessions
+    getUserLiveSessions,
+    archiveCourse,
+    unArchiveCourse,
+    getArchivedCourses
 }

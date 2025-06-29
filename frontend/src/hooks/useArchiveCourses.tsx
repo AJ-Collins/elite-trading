@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../context/useAuth';
 
 interface Instructor {
   name: string;
@@ -11,118 +12,61 @@ interface Course {
   slug: string;
   description: string;
   image: string;
-  video: string | null;
-  price: number | null;
-  subscriptionPrice?: number;
-  publishedWhen: string | null;
   instructor: Instructor;
   level: string;
-  levelNumber: number;
   uploadDate: string;
-  rating: number;
-  color: string;
-  modules: unknown[];
-  nextCourse: { id: number } | number | null;
-  instructorAvatar: string;
-  isArchived?: boolean;
-  progressPercentage: number;
 }
 
-interface UseArchiveCoursesResult {
+interface UseUserSubscriptionCoursesResult {
   courses: Course[];
   loading: boolean;
   error: string | null;
 }
 
-export const useArchiveCourses = (userId: number | null, token: string | null): UseArchiveCoursesResult => {
+export const useArchiveCourses  = (): UseUserSubscriptionCoursesResult => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const { user, token } = useAuth();
+  const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
-    const fetchArchivedCourses = async () => {
+    const fetchFreeCourses = async () => {
       try {
-        if (!userId || !token) {
-          throw new Error('User not authenticated');
-        }
-
-        const API_URL = '';
-
-        // Fixed API request with proper nested population
-        const userRes = await fetch(
-          `${API_URL}/api/users/${userId}?populate[subscriptions][populate][courses][populate][thumbnail]=true&populate[subscriptions][populate][courses][populate][video]=true&populate[subscriptions][populate][courses][populate][author]=true&filters[subscriptions][isActive][$eq]=true`,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        const userData = await userRes.json();
-        if (!userRes.ok) {
-          throw new Error(userData.error?.message || 'Failed to fetch user subscriptions');
-        }
-
-        // Validate we have subscriptions directly on the userData object (not nested in data)
-        if (!userData?.subscriptions || !Array.isArray(userData.subscriptions)) {
+        if (!user || !token) {
           setCourses([]);
-          setError('No active subscriptions found in user data');
           setLoading(false);
           return;
         }
 
-        // Extract active subscriptions
-        const activeSubscriptions = userData.subscriptions.filter((sub: any) => sub.isActive) || [];
-        if (activeSubscriptions.length === 0) {
-          setCourses([]);
-          setError('No active subscriptions found');
-          setLoading(false);
-          return;
+        const res = await fetch(`${API_URL}/api/user/courses/archive?userId=${user.id}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
+          },
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.error?.message || 'Failed to fetch courses');
         }
 
-        // Deduplicate courses by documentId and collect subscription prices
-        const courseMap = new Map<string, any>();
-        const subscriptionPriceMap = new Map<number, number>();
-
-        for (const subscription of activeSubscriptions) {
-          // Store subscription price by id
-          subscriptionPriceMap.set(subscription.id, subscription.price || 0);
-
-          // Check if courses exist directly on the subscription
-          if (subscription.courses && Array.isArray(subscription.courses)) {
-            for (const course of subscription.courses) {
-              // Check if course is archived
-              if (course.archived === true && course.documentId) {
-                // Use documentId as the unique key
-                courseMap.set(course.documentId, {
-                  ...course,
-                  subscriptionId: subscription.id,
-                });
-              }
-            }
-          }
-        }
+        const freeCourseData = await res.json();
 
         // Format courses
-        const formattedCourses: Course[] = Array.from(courseMap.values()).map((course: any): Course => {
-          // Extract thumbnail URL
-          let thumbnailUrl = '/images/course_card.jpeg'; // Default fallback
-          if (course.thumbnail) {
-            // Handle different thumbnail structures
-            if (course.thumbnail.url) {
-              thumbnailUrl = `${API_URL}${course.thumbnail.url}`;
-            } else if (course.thumbnail.formats?.medium?.url) {
-              thumbnailUrl = `${API_URL}${course.thumbnail.formats.medium.url}`;
-            } else if (course.thumbnail.formats?.small?.url) {
-              thumbnailUrl = `${API_URL}${course.thumbnail.formats.small.url}`;
-            } else if (course.thumbnail.formats?.thumbnail?.url) {
-              thumbnailUrl = `${API_URL}${course.thumbnail.formats.thumbnail.url}`;
-            }
-          }
+        const formattedCourses = freeCourseData.map((course: any): Course => {
+          // Use course.thumbnail directly since backend provides it as a string path
+          const thumbnailUrl = course.thumbnail
+            ? `${API_URL}${course.thumbnail}`
+            : '/images/course_card.jpeg';
 
-          // Format date
-          const startTime = new Date(course.publishedWhen || new Date());
+          const instructor: Instructor = {
+            name: course.author || 'Unknown Instructor',
+            email: '', // Not available in current response
+          };
+
+          const startTime = new Date(course.startTime || new Date());
           const formattedDateTime = startTime.toLocaleString('en-US', {
             weekday: 'short',
             month: 'short',
@@ -132,74 +76,29 @@ export const useArchiveCourses = (userId: number | null, token: string | null): 
             hour12: true,
           });
 
-          // Extract video URL
-          let videoUrl = null;
-          if (course.video && Array.isArray(course.video) && course.video.length > 0) {
-            const videoItem = course.video[0];
-            if (videoItem && videoItem.url) {
-              videoUrl = `${API_URL}${videoItem.url}`;
-            }
-          }
-
-          // Extract instructor info
-          const instructor: Instructor = course.author
-            ? {
-                name: course.author.username || 'Unknown Instructor',
-                email: course.author.email || '',
-              }
-            : {
-                name: 'Unknown Instructor',
-                email: '',
-              };
-
           return {
             id: course.id,
             title: course.title || 'Untitled Course',
-            slug: course.slug || '',
+            slug: course.slug || `course-${course.id}`, // Fallback
             description: course.description || 'No description available',
             image: thumbnailUrl,
-            video: videoUrl,
-            price: course.price ?? null,
-            subscriptionPrice: course.subscriptionId
-              ? subscriptionPriceMap.get(course.subscriptionId)
-              : undefined,
-            publishedWhen: course.publishedWhen ?? null,
             instructor,
             level: course.level || 'Beginner',
-            levelNumber: course.levelNumber || 0,
             uploadDate: formattedDateTime,
-            rating: course.rating || 0,
-            color: course.color || '#3182CE',
-            modules: course.modules || [],
-            nextCourse: course.nextCourse || null,
-            instructorAvatar: '/images/avatar.png',
-            isArchived: true,
-            progressPercentage: 0, // No progress data without learning paths
           };
         });
 
-        if (formattedCourses.length === 0) {
-          setError(null);
-        } else {
-          setError(null);
-        }
-
         setCourses(formattedCourses);
       } catch (error: any) {
-        console.error('Error fetching archived courses:', error);
-        setError(null);
+        console.error('Error fetching subscription courses:', error);
+        setError(error.message || 'Unknown error');
       } finally {
         setLoading(false);
       }
     };
 
-    if (userId && token) {
-      fetchArchivedCourses();
-    } else {
-      setError('User not authenticated');
-      setLoading(false);
-    }
-  }, [userId, token]);
+    fetchFreeCourses();
+  }, [user, token]);
 
   return { courses, loading, error };
 };

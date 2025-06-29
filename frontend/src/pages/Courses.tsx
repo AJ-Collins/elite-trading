@@ -90,6 +90,7 @@ interface FormattedCourse {
   modules: any[];
   nextCourse: any | null;
   instructorAvatar: string;
+  archived: boolean;
 }
 
 const CoursePage = () => {
@@ -168,6 +169,7 @@ const CoursePage = () => {
           modules: [],
           nextCourse: null,
           instructorAvatar: "/images/avatar.png",
+          archived: course.archived, // Add this
         }));
 
         setCourses(formattedCourses);
@@ -210,6 +212,7 @@ const CoursePage = () => {
           publishedWhen: foundCourse.publishedWhen,
           instructor: foundCourse.instructor,
           instructorAvatar: foundCourse.instructorAvatar,
+          archived: foundCourse.archived,
         });
 
         if (foundCourse.videos.length > 0) {
@@ -327,7 +330,7 @@ const CoursePage = () => {
 
   const markCourseAsCompleted = () => {
     setIsCourseFinished(true);
-    fetch(`${API_URL}/api/courses/mark-complete`, {
+    fetch(`${API_URL}/api/user/courses/mark-complete`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -340,6 +343,41 @@ const CoursePage = () => {
         console.error("Error marking course as completed:", err);
         toast.error("Failed to mark course as completed");
       });
+  };
+
+  const handleArchiveCourse = async () => {
+    try {
+      const dataToSend = {
+        courseId: courseInfo?.id,
+        userId: user?.id,
+      };
+  
+      console.log("Sending data to archive course:", dataToSend);
+
+      const res = await fetch(`${API_URL}/api/user/courses/archive`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "Cache-Control": "no-cache",
+        },
+        body: JSON.stringify({ courseId: courseInfo?.id, userId: user?.id }),
+      });
+
+      if (!res.ok) throw new Error(`Failed to archive course: ${res.status}`);
+
+      // Update local state to reflect archived status
+      setCourseInfo((prev: any) => ({ ...prev, archived: true }));
+      setCourses((prevCourses) =>
+        prevCourses.map((c) =>
+          c.id === courseInfo?.id ? { ...c, archived: true } : c
+        )
+      );
+      toast.success("Course marked as archived!");
+    } catch (err: any) {
+      console.error("Error archiving course:", err);
+      toast.error("Failed to archive course");
+    }
   };
 
   const handleVideoTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -457,7 +495,7 @@ const CoursePage = () => {
             <li>
               <button
                 onClick={() => navigate("/dashboard")}
-                className="flex items-center text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
+                className="flex items-center text-sm font-medium text-gray-600 hover:text-green-600 transition-colors"
                 aria-label="Back to dashboard"
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -495,7 +533,7 @@ const CoursePage = () => {
                     setIsModalOpen(true);
                   }
                 }}
-                className="bg-blue-600 text-white rounded-full p-4 shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"
+                className="bg-green-600 text-white rounded-full p-4 shadow-lg hover:bg-green-700 transition-transform transform hover:scale-105"
                 disabled={!courseInfo.videos.length}
                 aria-label="Play first video"
               >
@@ -510,31 +548,49 @@ const CoursePage = () => {
             <p className="text-gray-600 mb-4 leading-relaxed">{courseInfo.description}</p>
             <div className="flex flex-wrap gap-4 text-sm text-gray-600">
               <div className="flex items-center">
-                <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
                 {courseInfo.instructor}
               </div>
               <div className="flex items-center">
-                <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
                 {courseInfo.level}
               </div>
               <div className="flex items-center">
-                <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 {formatRelativeDate(courseInfo.publishedWhen)}
               </div>
             </div>
             <button
+              style={{
+                borderBottomRightRadius: 0,
+              }}
               onClick={() => setIsModalOpen(true)}
-              className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="mt-6 px-6 py-3 bg-green-500 text-white rounded-2xl hover:bg-green-600 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500"
               aria-label="Start course"
             >
               Start Course
             </button>
+            <button
+              style={{
+                borderBottomRightRadius: 0,
+              }}
+                onClick={handleArchiveCourse}
+                className={`px-6 py-3 ml-2 rounded-2xl transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                  courseInfo.archived
+                    ? "bg-green-300 text-gray-500 cursor-not-allowed"
+                    : "bg-green-100 text-gray-700 hover:bg-green-200"
+                }`}
+                disabled={courseInfo.archived}
+                aria-label={courseInfo.archived ? "Course already archived" : "Archive course"}
+              >
+                {courseInfo.archived ? "Archived" : "Archive Course"}
+              </button>
           </div>
         </div>
 
@@ -560,14 +616,17 @@ const CoursePage = () => {
                 {courseInfo.videos.length > 0 ? (
                   courseInfo.videos.map((video) => (
                     <button
+                      style={{
+                        borderBottomRightRadius: 0,
+                      }}
                       key={video.id}
                       onClick={() => handleVideoSelect(video)}
-                      className={`w-full text-left p-3 rounded-lg flex items-center gap-3 text-sm transition-colors duration-200 ${
-                        selectedVideo?.id === video.id ? "bg-blue-100 text-blue-800" : "hover:bg-gray-100"
+                      className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 text-sm transition-colors duration-200 ${
+                        selectedVideo?.id === video.id ? "bg-green-100 text-green-800" : "hover:bg-green-100"
                       }`}
                       aria-label={`Play video: ${video.title}`}
                     >
-                      <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -583,14 +642,17 @@ const CoursePage = () => {
                 {courseInfo.notes.length > 0 ? (
                   courseInfo.notes.map((note) => (
                     <button
+                      style={{
+                        borderBottomRightRadius: 0,
+                      }}
                       key={note.id}
                       onClick={() => handleNoteSelect(note)}
-                      className={`w-full text-left p-3 rounded-lg flex items-center gap-3 text-sm transition-colors duration-200 ${
-                        selectedNote?.id === note.id ? "bg-blue-100 text-blue-800" : "hover:bg-gray-100"
+                      className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 text-sm transition-colors duration-200 ${
+                        selectedNote?.id === note.id ? "bg-green-100 text-green-800" : "hover:bg-green-100"
                       }`}
                       aria-label={`View note: ${note.title}`}
                     >
-                      <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       <span className="truncate">{note.title}</span>
@@ -616,7 +678,7 @@ const CoursePage = () => {
                     {courseInfo.videos.map((video, index) => (
                       <div
                         key={video.id}
-                        className={`flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors duration-200 ${
+                        className={`flex items-center gap-4 p-4 border border-green-300 rounded-lg hover:bg-green-50 transition-colors duration-200 ${
                           index === courseInfo.videos.length - 1 && courseInfo.notes.length === 0 ? "" : "border-b-0"
                         }`}
                       >
@@ -640,7 +702,7 @@ const CoursePage = () => {
                     {courseInfo.notes.map((note, index) => (
                       <div
                         key={note.id}
-                        className={`flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors duration-200 ${
+                        className={`flex items-center gap-4 p-4 border border-green-300 rounded-lg hover:bg-green-50 transition-colors duration-200 ${
                           index === courseInfo.notes.length - 1 ? "" : "border-b-0"
                         }`}
                       >
@@ -655,8 +717,11 @@ const CoursePage = () => {
                         </div>
                         <div className="flex gap-2">
                           <button
+                            style={{
+                              borderBottomRightRadius: 0,
+                            }}
                             onClick={() => handleNoteSelect(note)}
-                            className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="px-3 py-1.5 bg-green-600 text-white rounded-2xl text-sm hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500"
                             aria-label={`View note: ${note.title}`}
                           >
                             View
@@ -672,7 +737,7 @@ const CoursePage = () => {
             {/* Up Next */}
             {nextCourse && (
               <div className="bg-white rounded-2xl shadow-lg p-6 ml-4">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Up Next</h2>
+                <h2 className="text-xl font-semibold text-green-900 mb-4">Up Next</h2>
                 <div className="flex items-center gap-4">
                   <img
                     src={nextCourse.image}
@@ -687,7 +752,7 @@ const CoursePage = () => {
                     <h3 className="text-base font-medium text-gray-800">{nextCourse.title}</h3>
                     <button
                       onClick={() => navigate(nextCourse.path)}
-                      className="mt-2 text-blue-600 hover:underline text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="mt-2 text-green-600 hover:underline text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                       aria-label={`Start next course: ${nextCourse.title}`}
                     >
                       Start Now
@@ -704,7 +769,7 @@ const CoursePage = () => {
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200">
+            <div className="flex justify-between items-center p-4 border-b border-green-200">
               <h3 className="text-lg font-semibold text-gray-900 truncate">
                 {selectedVideo?.title || selectedNote?.title || "Resource Viewer"}
               </h3>
@@ -738,14 +803,17 @@ const CoursePage = () => {
                     {courseInfo.videos.length > 0 ? (
                       courseInfo.videos.map((video) => (
                         <button
+                        style={{
+                          borderBottomRightRadius: 0,
+                        }}
                           key={video.id}
                           onClick={() => handleVideoSelect(video)}
-                          className={`w-full text-left p-3 rounded-lg flex items-center gap-3 text-sm transition-colors duration-200 ${
-                            selectedVideo?.id === video.id ? "bg-blue-100 text-blue-800" : "hover:bg-gray-100"
+                          className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 text-sm transition-colors duration-200 ${
+                            selectedVideo?.id === video.id ? "bg-green-100 text-green-800" : "hover:bg-green-100"
                           }`}
                           aria-label={`Play video: ${video.title}`}
                         >
-                          <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
@@ -761,14 +829,17 @@ const CoursePage = () => {
                     {courseInfo.notes.length > 0 ? (
                       courseInfo.notes.map((note) => (
                         <button
+                        style={{
+                          borderBottomRightRadius: 0,
+                        }}
                           key={note.id}
                           onClick={() => handleNoteSelect(note)}
-                          className={`w-full text-left p-3 rounded-lg flex items-center gap-3 text-sm transition-colors duration-200 ${
-                            selectedNote?.id === note.id ? "bg-blue-100 text-blue-800" : "hover:bg-gray-100"
+                          className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 text-sm transition-colors duration-200 ${
+                            selectedNote?.id === note.id ? "bg-green-100 text-green-800" : "hover:bg-green-100"
                           }`}
                           aria-label={`View note: ${note.title}`}
                         >
-                          <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                           <span className="truncate">{note.title}</span>
@@ -837,19 +908,25 @@ const CoursePage = () => {
                           <p className="text-gray-500 mb-4">The document couldn't be loaded in the viewer.</p>
                           <div className="flex gap-3 justify-center">
                             <a
+                            style={{
+                              borderBottomRightRadius: 0,
+                            }}
                               href={selectedNote.source}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-2xl hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500"
                               aria-label="Open note in new tab"
                             >
                               Open in New Tab
                             </a>
                             <a
+                            style={{
+                              borderBottomRightRadius: 0,
+                            }}
                               href={selectedNote.source}
                               download
                               onClick={() => toast.success("Download started")}
-                              className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300"
+                              className="inline-flex items-center px-4 py-2 bg-green-100 text-green-700 rounded-2xl hover:bg-green-200 transition-colors focus:outline-none focus:ring-2 focus:ring-green-300"
                               aria-label="Download note"
                             >
                               Download
@@ -872,19 +949,25 @@ const CoursePage = () => {
                           </div>
                           <div className="flex gap-2">
                             <a
+                            style={{
+                              borderBottomRightRadius: 0,
+                            }}
                               href={selectedNote.source}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="inline-flex items-center px-3 py-1.5 bg-green-600 text-white rounded-2xl text-sm hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500"
                               aria-label="Open note in new tab"
                             >
                               Open
                             </a>
                             <a
+                            style={{
+                              borderBottomRightRadius: 0,
+                            }}
                               href={selectedNote.source}
                               download
                               onClick={() => toast.success("Download started")}
-                              className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md text-sm hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300"
+                              className="inline-flex items-center px-3 py-1.5 bg-green-100 text-gray-700 rounded-2xl text-sm hover:bg-green-200 transition-colors focus:outline-none focus:ring-2 focus:ring-green-300"
                               aria-label="Download note"
                             >
                               Download
@@ -900,9 +983,9 @@ const CoursePage = () => {
                   </div>
                 )}
                 {selectedVideo && (
-                  <div className="p-4 bg-gray-50 border-t border-gray-200">
+                  <div className="p-4 bg-green-50 border-t border-green-200">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-medium text-gray-700">
+                      <span className="text-sm font-medium text-green-700">
                         Progress: {Math.round(percentageWatched)}%
                       </span>
                       {isCourseFinished && (
@@ -911,9 +994,9 @@ const CoursePage = () => {
                         </span>
                       )}
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div className="w-full bg-green-200 rounded-full h-2.5">
                       <div
-                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                        className="bg-green-600 h-2.5 rounded-full transition-all duration-300"
                         style={{ width: `${percentageWatched}%` }}
                       ></div>
                     </div>

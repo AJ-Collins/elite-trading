@@ -54,7 +54,7 @@ export const useCourses = (): UseUserSubscriptionCoursesResult => {
 
         const freeCourseData = await res.json();
 
-        console.log('Received premium courses data:', JSON.stringify(freeCourseData, null, 2));
+        // console.log('Received premium courses data:', JSON.stringify(freeCourseData, null, 2));
 
         // Format courses
         const formattedCourses = freeCourseData.map((course: any): Course => {
