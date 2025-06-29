@@ -22,8 +22,13 @@ const app = express();
 // Middleware
 app.use(express.json());  // For parsing JSON bodies
 
+const allowedOrigins = [
+  'https://affectionate-kindness-production.up.railway.app', // Frontend on Railway
+  'http://localhost:5173' // Local dev (optional)
+];
+
 app.use(cors({
-  origin: '*',
+  origin: allowedOrigins,
   credentials: true
 }));
 
