@@ -8,11 +8,12 @@ const Login = () => {
   const location = useLocation();
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
+  const API_URL = import.meta.env.VITE_API_URL;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://127.0.0.1:5000/api/auth/login', {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
