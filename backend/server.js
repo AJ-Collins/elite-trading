@@ -22,7 +22,7 @@ const app = express();
 // Middleware
 app.use(express.json());  // For parsing JSON bodies
 app.use(cors({
-    origin: 'http://localhost:8080', 
+    origin: 'https://affectionate-kindness-production.up.railway.app/blog', 
     credentials: true
   }));  
 
