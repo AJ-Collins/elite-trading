@@ -63,9 +63,26 @@ app.use('/api', subscriptionRoutes);
 
 
 // Test database connection
+// sequelize.authenticate()
+//   .then(() => console.log('Database connected'))
+//   .catch(err => console.error('Unable to connect to the database:', err));
 sequelize.authenticate()
-  .then(() => console.log('Database connected'))
-  .catch(err => console.error('Unable to connect to the database:', err));
+  .then(() => {
+    console.log('✅ Database connected');
+
+    // 🔧 Sync models to DB
+    sequelize.sync({ alter: true })
+      .then(() => {
+        console.log('✅ Tables synced!');
+      })
+      .catch(err => {
+        console.error('❌ Error syncing tables:', err);
+      });
+
+  })
+  .catch(err => {
+    console.error('❌ Unable to connect to the database:', err);
+  });
 
 // Start server
 const PORT = process.env.PORT || 5000;
